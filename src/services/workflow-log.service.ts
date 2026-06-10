@@ -4,7 +4,21 @@ import { WorkflowLog } from "../types";
 import { readJsonFile, writeJsonFile } from "./json-file.service";
 
 export async function getWorkflowLogs(): Promise<WorkflowLog[]> {
-  return readJsonFile<WorkflowLog[]>(config.workflowFile, []);
+  const logs = await readJsonFile<unknown>(config.workflowFile, []);
+  if (!Array.isArray(logs)) return [];
+
+  return logs
+    .filter((value): value is Partial<WorkflowLog> =>
+      Boolean(value) && typeof value === "object" && !Array.isArray(value)
+    )
+    .map((value, index) => {
+      const normalized = normalizeWorkflowLog(value);
+      return {
+        ...normalized,
+        id: value.id?.trim() || `workflow-entry-${index + 1}`,
+        date: typeof value.date === "string" ? value.date.trim() : ""
+      };
+    });
 }
 
 export async function saveWorkflowLogs(logs: WorkflowLog[]): Promise<void> {

@@ -10,10 +10,19 @@ const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
 }[char]));
-const shortDate = (value) => value ? new Date(value).toLocaleDateString() : "Not available";
-const dateTime = (value) => value
-  ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-  : "Not available";
+const validDate = (value) => {
+  if (!value) return null;
+  const dateOnly = typeof value === "string"
+    ? value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    : null;
+  const parsed = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+const shortDate = (value) => validDate(value)?.toLocaleDateString() || "Not available";
+const dateTime = (value) => validDate(value)
+  ?.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) || "Not available";
 const lines = (value) => value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 const tags = (value) => value.split(",").map((item) => item.trim()).filter(Boolean);
 
@@ -61,6 +70,47 @@ function detailItem(label, value, className = "") {
   `;
 }
 
+function normalizeWorkflowLogs(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((log) => log && typeof log === "object" && !Array.isArray(log))
+    .map((log, index) => ({
+      id: String(log.id || `workflow-entry-${index + 1}`),
+      projectId: String(log.projectId || ""),
+      sessionTitle: String(log.sessionTitle || "Untitled session"),
+      date: String(log.date || ""),
+      status: String(log.status || "in-progress"),
+      summary: String(log.summary || ""),
+      passes: Array.isArray(log.passes) ? log.passes.filter(Boolean).map(String) : [],
+      blockers: Array.isArray(log.blockers) ? log.blockers.filter(Boolean).map(String) : [],
+      nextSteps: Array.isArray(log.nextSteps) ? log.nextSteps.filter(Boolean).map(String) : [],
+      gitStatus: String(log.gitStatus || ""),
+      commitHash: String(log.commitHash || ""),
+      tags: Array.isArray(log.tags) ? log.tags.filter(Boolean).map(String) : []
+    }));
+}
+
+function sortWorkflowLogs(logs) {
+  return [...logs].sort((a, b) => {
+    const aTime = validDate(a.date)?.getTime() || 0;
+    const bTime = validDate(b.date)?.getTime() || 0;
+    return bTime - aTime || String(b.id).localeCompare(String(a.id));
+  });
+}
+
+function workflowDate(value) {
+  const parsed = validDate(value);
+  if (!parsed) return "Date not recorded";
+  const includesTime = typeof value === "string" && /T\d{2}:\d{2}/.test(value);
+  return includesTime ? dateTime(value) : parsed.toLocaleDateString();
+}
+
+function projectName(projectId) {
+  return state.projects.find((project) => project.id === projectId)?.name ||
+    projectId ||
+    "Unknown project";
+}
+
 function showToast(message) {
   const toast = $("#toast");
   toast.textContent = message;
@@ -92,6 +142,28 @@ function renderSummary() {
     </article>
   `).join("");
   $("#sync-time").textContent = `Synced ${new Date(summary.lastSyncedAt).toLocaleTimeString()}`;
+}
+
+function renderRecentActivity() {
+  const recentLogs = sortWorkflowLogs(state.logs).slice(0, 6);
+  $("#recent-activity").innerHTML = recentLogs.length
+    ? recentLogs.map((log) => `
+      <article class="activity-item">
+        <div class="activity-marker ${statusKind(log.status)}" aria-hidden="true"></div>
+        <div class="activity-content">
+          <div class="activity-meta">
+            <strong>${escapeHtml(projectName(log.projectId))}</strong>
+            <span>${escapeHtml(workflowDate(log.date))}</span>
+          </div>
+          <div class="activity-title">
+            <h3>${escapeHtml(log.sessionTitle || "Untitled session")}</h3>
+            ${badge(log.status || "Status unavailable", statusKind(log.status))}
+          </div>
+          <p>${escapeHtml(log.summary || "No summary recorded.")}</p>
+        </div>
+      </article>
+    `).join("")
+    : '<div class="empty-state compact"><div><strong>No recent activity</strong><p>Workflow entries will appear here after a session is logged.</p></div></div>';
 }
 
 function renderProjects() {
@@ -161,7 +233,9 @@ function renderProjectDetail() {
   const git = project.git || {};
   const documentation = project.documentation || {};
   const github = project.github || {};
-  const projectLogs = state.logs.filter((log) => log.projectId === project.id).slice(0, 3);
+  const projectLogs = sortWorkflowLogs(
+    state.logs.filter((log) => log.projectId === project.id)
+  ).slice(0, 5);
   const repoPath = project.repoPath || "";
   const quotedPath = `"${repoPath}"`;
   const commands = [
@@ -171,8 +245,17 @@ function renderProjectDetail() {
     `git -C ${quotedPath} log --oneline -5`
   ];
   const recent = projectLogs.length
-    ? projectLogs.map((log) => `<li>${escapeHtml(log.date)} - ${escapeHtml(log.sessionTitle)} ${badge(log.status, statusKind(log.status))}</li>`).join("")
-    : "<li>No workflow sessions yet.</li>";
+    ? projectLogs.map((log) => `
+      <li class="project-workflow-item">
+        <div class="project-workflow-heading">
+          <strong>${escapeHtml(log.sessionTitle || "Untitled session")}</strong>
+          ${badge(log.status || "Status unavailable", statusKind(log.status))}
+        </div>
+        <span class="muted">${escapeHtml(workflowDate(log.date))}</span>
+        <p>${escapeHtml(log.summary || "No summary recorded.")}</p>
+      </li>
+    `).join("")
+    : '<li class="workflow-empty"><strong>No workflow entries yet</strong><span>Log a session to build this project’s activity history.</span></li>';
   const syncResult = state.syncResults.get(project.id);
   const fetchStatus = syncResult
     ? `${syncResult.fetchStatus}: ${syncResult.fetchMessage}`
@@ -298,7 +381,7 @@ function renderProjectDetail() {
       <article class="detail-card">
         <p class="eyebrow">RECENT ACTIVITY</p>
         <h3>Workflow sessions</h3>
-        <ul class="recent-workflow">${recent}</ul>
+        <ul class="recent-workflow" aria-label="${escapeHtml(project.name)} workflow sessions">${recent}</ul>
       </article>
     </div>
   `;
@@ -322,11 +405,10 @@ function renderWorkflow() {
   const projectFilter = $("#filter-project").value;
   const statusFilter = $("#filter-status").value;
   const tagFilter = $("#filter-tag").value.trim().toLowerCase();
-  const logs = [...state.logs]
+  const logs = sortWorkflowLogs(state.logs
     .filter((log) => !projectFilter || log.projectId === projectFilter)
     .filter((log) => !statusFilter || log.status === statusFilter)
-    .filter((log) => !tagFilter || log.tags.some((tag) => tag.toLowerCase().includes(tagFilter)))
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .filter((log) => !tagFilter || log.tags.some((tag) => tag.toLowerCase().includes(tagFilter))));
 
   $("#workflow-timeline").innerHTML = logs.length ? logs.map((log) => {
     const project = state.projects.find((item) => item.id === log.projectId);
@@ -337,12 +419,16 @@ function renderWorkflow() {
       <article class="log-card ${cardClass}">
         <div class="log-top">
           <div>
-            <div class="log-meta">${badge(log.status, statusKind(log.status))}<span class="muted">${escapeHtml(log.date)} | ${escapeHtml(project?.name || log.projectId)}</span></div>
-            <h3>${escapeHtml(log.sessionTitle)}</h3>
+            <div class="log-meta">
+              ${badge(log.status || "Status unavailable", statusKind(log.status))}
+              <span class="muted">${escapeHtml(workflowDate(log.date))}</span>
+              <span class="log-project">${escapeHtml(project?.name || log.projectId || "Unknown project")}</span>
+            </div>
+            <h3>${escapeHtml(log.sessionTitle || "Untitled session")}</h3>
           </div>
           <button class="button small edit-log" data-log-id="${escapeHtml(log.id)}">Edit</button>
         </div>
-        <p>${escapeHtml(log.summary || "No summary.")}</p>
+        <p class="log-summary">${escapeHtml(log.summary || "No summary recorded.")}</p>
         <div class="tag-list">${log.gitStatus ? badge(log.gitStatus, statusKind(log.gitStatus)) : ""}${log.tags.map((tag) => badge(`#${tag}`)).join("")}</div>
         <div class="log-lists">${list("Passes", log.passes)}${list("Blockers", log.blockers)}${list("Next steps", log.nextSteps)}</div>
       </article>
@@ -409,9 +495,10 @@ async function loadDashboard(syncProjects = true) {
     api("/api/workflow")
   ]);
   state.projects = projects;
-  state.logs = logs;
+  state.logs = normalizeWorkflowLogs(logs);
   state.summary = await api("/api/status");
   renderSummary();
+  renderRecentActivity();
   renderProjects();
   populateSelects();
   renderWorkflow();
@@ -447,8 +534,9 @@ async function syncNow(fetchRemote = false) {
     state.syncResults = new Map(
       (result.results || []).map((item) => [item.projectId, item])
     );
-    state.logs = await api("/api/workflow");
+    state.logs = normalizeWorkflowLogs(await api("/api/workflow"));
     renderSummary();
+    renderRecentActivity();
     renderProjects();
     populateSelects();
     renderWorkflow();
