@@ -73,6 +73,7 @@ export interface GitHubMetadata {
   openIssues?: number;
   defaultBranch?: string;
   lastPushedDate?: string | null;
+  lastUpdatedDate?: string | null;
   visibility?: string;
   primaryLanguage?: string | null;
   topics?: string[];

@@ -21,7 +21,7 @@ File: `src/data/projects.json`
 | `notes` | string | no | Free-form project context |
 | `vscodeOpenCommand` | string | no | Copyable VS Code command |
 
-Live `git` and `github` objects are added to API responses. They are not written into `projects.json`, which prevents temporary scan results from polluting user-managed data.
+Live `git` and `github` objects are added to API responses. They are not written into `projects.json`, which prevents temporary scan results from polluting user-managed data. GitHub metadata includes both the repository's last pushed and last updated timestamps when available.
 
 The API also adds a `documentation` object with `readmePresent`, `docsDirectoryPresent`, `documentationFiles`, and a summary `status` of `healthy`, `partial`, `missing`, or `unavailable`.
 

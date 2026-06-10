@@ -56,6 +56,7 @@ export async function getGitHubMetadata(project: Project): Promise<GitHubMetadat
       openIssues: data.open_issues_count as number,
       defaultBranch: data.default_branch as string,
       lastPushedDate: (data.pushed_at as string | null) ?? null,
+      lastUpdatedDate: (data.updated_at as string | null) ?? null,
       visibility: (data.visibility as string) || ((data.private as boolean) ? "private" : "public"),
       primaryLanguage: (data.language as string | null) ?? null,
       topics: Array.isArray(data.topics) ? (data.topics as string[]) : []

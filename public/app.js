@@ -10,7 +10,10 @@ const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
 }[char]));
-const shortDate = (value) => value ? new Date(value).toLocaleDateString() : "n/a";
+const shortDate = (value) => value ? new Date(value).toLocaleDateString() : "Not available";
+const dateTime = (value) => value
+  ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+  : "Not available";
 const lines = (value) => value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 const tags = (value) => value.split(",").map((item) => item.trim()).filter(Boolean);
 
@@ -36,6 +39,26 @@ function statusKind(status) {
   if (["t404", "w404", "failed", "blocked"].includes(value)) return "bad";
   if (["in-progress", "dirty", "paused"].includes(value)) return "warn";
   return "info";
+}
+
+function changedFileCount(project) {
+  return (project.git?.modifiedFiles || 0) + (project.git?.untrackedFiles || 0);
+}
+
+function aheadBehindLabel(git) {
+  if (!git?.remoteOriginUrl) return "No remote configured";
+  if (git.ahead == null || git.behind == null) return "Comparison unavailable";
+  if (git.ahead === 0 && git.behind === 0) return "Up to date";
+  return `${git.ahead} ahead, ${git.behind} behind`;
+}
+
+function detailItem(label, value, className = "") {
+  return `
+    <div class="metadata-item ${className}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
 }
 
 function showToast(message) {
@@ -74,28 +97,39 @@ function renderSummary() {
 function renderProjects() {
   const body = $("#projects-table");
   body.innerHTML = state.projects.map((project) => {
-    const gitState = !project.git.available
-      ? badge("Unavailable", "bad")
-      : project.git.clean
-        ? badge("WTC", "good")
-        : badge(`Dirty ${project.git.modifiedFiles + project.git.untrackedFiles}`, "warn");
-    const commit = project.git.lastCommitHash
-      ? `${escapeHtml(project.git.lastCommitHash.slice(0, 7))}<span class="cell-secondary">${escapeHtml(project.git.lastCommitMessage || "")}</span>`
-      : '<span class="muted">n/a</span>';
+    const git = project.git || {};
+    const documentation = project.documentation || {};
+    const github = project.github || {};
+    const gitState = !git.available
+      ? badge("Git unavailable", "bad")
+      : git.clean
+        ? badge("Clean", "good")
+        : badge(`Dirty · ${changedFileCount(project)} files`, "warn");
+    const health = [
+      documentation.readmePresent ? badge("README", "good") : badge("README missing", "bad"),
+      documentation.docsDirectoryPresent ? badge("Docs", "good") : badge("Docs missing", "warn")
+    ].join("");
+    const commit = git.lastCommitHash
+      ? `${escapeHtml(git.lastCommitHash.slice(0, 7))}<span class="cell-secondary">${escapeHtml(git.lastCommitMessage || "No commit message")}</span>`
+      : '<span class="muted">No commits found</span>';
+    const githubState = github.available
+      ? `${badge("GitHub available", "good")}<span class="cell-secondary">${escapeHtml(aheadBehindLabel(git))}</span>`
+      : `${badge("GitHub unavailable", "warn")}<span class="cell-secondary">${escapeHtml(github.error || "Metadata was not returned")}</span>`;
     return `
       <tr data-project-id="${escapeHtml(project.id)}" class="${state.selectedProjectId === project.id ? "selected" : ""}">
         <td>${escapeHtml(project.name)}<span class="cell-secondary">${escapeHtml(project.type)}</span></td>
         <td>${badge(project.status, statusKind(project.status))}</td>
         <td>${escapeHtml(project.currentSession || "Not set")}</td>
-        <td>${escapeHtml(project.git.branch || "n/a")}</td>
+        <td>${escapeHtml(git.branch || "Unknown")}</td>
         <td>${gitState}</td>
+        <td><div class="badge-list">${health}</div></td>
         <td>${commit}</td>
-        <td>${project.githubUrl ? `<a href="${escapeHtml(project.githubUrl)}" target="_blank" rel="noreferrer">Open repo</a>` : '<span class="muted">Not set</span>'}</td>
-        <td><button class="button small copy-code" data-copy="${escapeHtml(project.vscodeOpenCommand)}">Copy</button></td>
+        <td>${githubState}</td>
+        <td><button class="button small copy-code" data-copy="${escapeHtml(project.vscodeOpenCommand || `code "${project.repoPath || ""}"`)}">Copy</button></td>
         <td>${escapeHtml(project.nextStep || "Not set")}</td>
       </tr>
     `;
-  }).join("");
+  }).join("") || '<tr><td colspan="10"><div class="empty-state">No projects are registered yet.</div></td></tr>';
 
   body.querySelectorAll("tr").forEach((row) => row.addEventListener("click", (event) => {
     if (event.target.closest("button, a")) return;
@@ -118,18 +152,24 @@ function selectProject(projectId) {
 
 function renderProjectDetail() {
   const project = state.projects.find((item) => item.id === state.selectedProjectId);
-  if (!project) return;
+  const container = $("#project-detail");
+  if (!project) {
+    state.selectedProjectId = null;
+    container.innerHTML = '<div class="empty-state"><div><strong>No project selected</strong><p>Choose a project row above to inspect its Git, documentation, and GitHub metadata.</p></div></div>';
+    return;
+  }
+  const git = project.git || {};
+  const documentation = project.documentation || {};
+  const github = project.github || {};
   const projectLogs = state.logs.filter((log) => log.projectId === project.id).slice(0, 3);
-  const quotedPath = `"${project.repoPath}"`;
+  const repoPath = project.repoPath || "";
+  const quotedPath = `"${repoPath}"`;
   const commands = [
     `cd ${quotedPath}`,
     project.vscodeOpenCommand || `code ${quotedPath}`,
     `git -C ${quotedPath} status`,
     `git -C ${quotedPath} log --oneline -5`
   ];
-  const github = project.github.available
-    ? `${project.github.visibility} | ${project.github.primaryLanguage || "No language"} | ${project.github.stars} stars | ${project.github.openIssues} issues`
-    : project.github.error || "GitHub metadata unavailable";
   const recent = projectLogs.length
     ? projectLogs.map((log) => `<li>${escapeHtml(log.date)} - ${escapeHtml(log.sessionTitle)} ${badge(log.status, statusKind(log.status))}</li>`).join("")
     : "<li>No workflow sessions yet.</li>";
@@ -137,44 +177,130 @@ function renderProjectDetail() {
   const fetchStatus = syncResult
     ? `${syncResult.fetchStatus}: ${syncResult.fetchMessage}`
     : "No manual fetch requested this session.";
+  const gitBadge = !git.available
+    ? badge("Git unavailable", "bad")
+    : git.clean
+      ? badge("Working tree clean", "good")
+      : badge(`Working tree dirty · ${changedFileCount(project)} changed`, "warn");
+  const githubBadge = github.available
+    ? badge(github.error ? "GitHub available · cached" : "GitHub metadata available", github.error ? "warn" : "good")
+    : badge("GitHub metadata unavailable", "warn");
+  const remoteBadge = git.remoteOriginUrl
+    ? badge("Remote configured", "good")
+    : badge("No remote configured", "warn");
+  const readmeBadge = documentation.readmePresent
+    ? badge("README present", "good")
+    : badge("README missing", "bad");
+  const docsBadge = documentation.docsDirectoryPresent
+    ? badge("Docs folder present", "good")
+    : badge("Docs folder missing", "warn");
+  const comparisonKind = !git.remoteOriginUrl || git.ahead == null || git.behind == null
+    ? "warn"
+    : git.behind > 0
+      ? "warn"
+      : "good";
+  const topics = Array.isArray(github.topics) && github.topics.length
+    ? github.topics.map((topic) => badge(`#${topic}`)).join("")
+    : '<span class="muted">No topics listed</span>';
+  const commitTitle = git.lastCommitHash
+    ? `${git.lastCommitHash.slice(0, 10)} · ${git.lastCommitMessage || "No commit message"}`
+    : "No commit information available";
+  const repositoryLink = project.githubUrl && /^https?:\/\//i.test(project.githubUrl)
+    ? `<a href="${escapeHtml(project.githubUrl)}" target="_blank" rel="noreferrer">Open GitHub repository</a>`
+    : '<span class="muted">No browser URL configured</span>';
 
-  $("#project-detail").innerHTML = `
+  container.innerHTML = `
     <div class="section-heading">
-      <div><p class="eyebrow">PROJECT DETAIL</p><h2>${escapeHtml(project.name)}</h2></div>
-      ${badge(project.git.available ? (project.git.clean ? "Working tree clean" : "Working tree dirty") : "Repository unavailable", project.git.available ? (project.git.clean ? "good" : "warn") : "bad")}
+      <div>
+        <p class="eyebrow">SELECTED PROJECT</p>
+        <h2>${escapeHtml(project.name)}</h2>
+        <p class="detail-path">${escapeHtml(repoPath || "No local path configured")}</p>
+      </div>
+      <div class="detail-heading-status">
+        ${gitBadge}
+        ${badge(`Refreshed ${dateTime(state.summary?.lastSyncedAt)}`)}
+      </div>
+    </div>
+    ${!git.available ? `<div class="condition-banner bad"><strong>Local repository unavailable</strong><span>${escapeHtml(git.error || "Git metadata could not be read.")}</span></div>` : ""}
+    <div class="detail-overview">
+      ${detailItem("Branch", git.branch || "Unknown")}
+      ${detailItem("Changed files", git.available ? String(changedFileCount(project)) : "Unavailable")}
+      ${detailItem("Ahead / behind", aheadBehindLabel(git))}
+      ${detailItem("Project status", project.status || "Not set")}
     </div>
     <div class="detail-grid">
-      <article class="detail-card">
-        <h3>Project</h3>
-        <dl>
-          <dt>Path</dt><dd>${escapeHtml(project.repoPath || "Not set")}</dd>
-          <dt>Stack</dt><dd>${escapeHtml(project.techStack.join(", ") || "Not set")}</dd>
-          <dt>Session</dt><dd>${escapeHtml(project.currentSession || "Not set")}</dd>
-          <dt>Next</dt><dd>${escapeHtml(project.nextStep || "Not set")}</dd>
-          <dt>Docs</dt><dd>${escapeHtml(project.documentation.status)} - README ${project.documentation.readmePresent ? "present" : "missing"}, docs folder ${project.documentation.docsDirectoryPresent ? "present" : "missing"}</dd>
-          <dt>Notes</dt><dd>${escapeHtml(project.notes || "None")}</dd>
-        </dl>
+      <article class="detail-card detail-card-wide">
+        <div class="card-heading">
+          <div><p class="eyebrow">SOURCE CONTROL</p><h3>Git repository</h3></div>
+          <div class="badge-list">${gitBadge}${remoteBadge}${badge(aheadBehindLabel(git), comparisonKind)}</div>
+        </div>
+        <div class="metadata-grid">
+          ${detailItem("Branch", git.branch || "Unknown")}
+          ${detailItem("Modified files", git.available ? String(git.modifiedFiles || 0) : "Unavailable")}
+          ${detailItem("Untracked files", git.available ? String(git.untrackedFiles || 0) : "Unavailable")}
+          ${detailItem("Remote origin", git.remoteOriginUrl || "No remote configured", "metadata-span")}
+          ${detailItem("Last commit", commitTitle, "metadata-span")}
+          ${detailItem("Commit date", shortDate(git.lastCommitDate))}
+          ${detailItem("Last fetch", fetchStatus, "metadata-span")}
+        </div>
       </article>
       <article class="detail-card">
-        <h3>Git + GitHub</h3>
-        <dl>
-          <dt>Branch</dt><dd>${escapeHtml(project.git.branch || "n/a")}</dd>
-          <dt>Changes</dt><dd>${project.git.modifiedFiles} modified, ${project.git.untrackedFiles} untracked</dd>
-          <dt>Ahead/behind</dt><dd>${project.git.ahead ?? "n/a"} / ${project.git.behind ?? "n/a"}</dd>
-          <dt>Last fetch</dt><dd>${escapeHtml(fetchStatus)}</dd>
-          <dt>Last commit</dt><dd>${escapeHtml(project.git.lastCommitMessage || "n/a")} (${shortDate(project.git.lastCommitDate)})</dd>
-          <dt>GitHub</dt><dd>${escapeHtml(github)}</dd>
-        </dl>
+        <div class="card-heading">
+          <div><p class="eyebrow">PROJECT HEALTH</p><h3>Documentation</h3></div>
+          ${badge(documentation.status || "unavailable", documentation.status === "healthy" ? "good" : documentation.status === "missing" ? "bad" : "warn")}
+        </div>
+        <div class="badge-list health-badges">${readmeBadge}${docsBadge}</div>
+        <p class="card-copy">${documentation.available
+          ? `${documentation.documentationFiles || 0} top-level documentation file${documentation.documentationFiles === 1 ? "" : "s"} found.`
+          : "Documentation health is unavailable because the project folder could not be scanned."}</p>
+      </article>
+      <article class="detail-card github-card">
+        <div class="card-heading">
+          <div><p class="eyebrow">REMOTE METADATA</p><h3>GitHub</h3></div>
+          ${githubBadge}
+        </div>
+        ${github.available ? `
+          <p class="github-description">${escapeHtml(github.description || "No repository description provided.")}</p>
+          <div class="metadata-grid compact">
+            ${detailItem("Visibility", github.visibility || "Unknown")}
+            ${detailItem("Language", github.primaryLanguage || "Not specified")}
+            ${detailItem("Stars", String(github.stars ?? 0))}
+            ${detailItem("Forks", String(github.forks ?? 0))}
+            ${detailItem("Open issues", String(github.openIssues ?? 0))}
+            ${detailItem("Default branch", github.defaultBranch || "Unknown")}
+            ${detailItem("Last pushed", dateTime(github.lastPushedDate))}
+            ${detailItem("Last updated", dateTime(github.lastUpdatedDate))}
+          </div>
+          <div class="topics"><span class="muted">Topics</span><div class="badge-list">${topics}</div></div>
+          ${github.error ? `<div class="inline-warning">${escapeHtml(github.error)} Showing the last successful metadata.</div>` : ""}
+        ` : `
+          <div class="condition-copy">
+            <strong>Metadata could not be loaded</strong>
+            <p>${escapeHtml(github.error || "No GitHub repository is configured for this project.")}</p>
+            <p class="muted">Public repositories can load without a token. Private repositories require GITHUB_TOKEN.</p>
+          </div>
+        `}
+        <div class="card-link">${repositoryLink}</div>
       </article>
       <article class="detail-card">
-        <h3>Commands</h3>
+        <div class="card-heading"><div><p class="eyebrow">LOCAL ACTIONS</p><h3>Commands</h3></div></div>
         <div class="command-list">${commands.map(commandRow).join("")}</div>
       </article>
     </div>
-    <article class="detail-card" style="margin-top: 16px">
-      <h3>Recent workflow</h3>
-      <ul>${recent}</ul>
-    </article>
+    <div class="detail-lower-grid">
+      <article class="detail-card">
+        <p class="eyebrow">CURRENT FOCUS</p>
+        <h3>${escapeHtml(project.currentSession || "No active session")}</h3>
+        <p>${escapeHtml(project.nextStep || "No next step recorded.")}</p>
+        <p class="muted">${escapeHtml(project.notes || "No project notes.")}</p>
+        <div class="badge-list">${(Array.isArray(project.techStack) ? project.techStack : []).map((item) => badge(item)).join("") || '<span class="muted">No tech stack recorded</span>'}</div>
+      </article>
+      <article class="detail-card">
+        <p class="eyebrow">RECENT ACTIVITY</p>
+        <h3>Workflow sessions</h3>
+        <ul class="recent-workflow">${recent}</ul>
+      </article>
+    </div>
   `;
   document.querySelectorAll(".command-copy").forEach((button) => button.addEventListener("click", () => {
     copyText(button.dataset.copy);
@@ -289,7 +415,7 @@ async function loadDashboard(syncProjects = true) {
   renderProjects();
   populateSelects();
   renderWorkflow();
-  if (state.selectedProjectId) renderProjectDetail();
+  renderProjectDetail();
 }
 
 function setSyncState(loading, message = "", kind = "") {
@@ -326,7 +452,7 @@ async function syncNow(fetchRemote = false) {
     renderProjects();
     populateSelects();
     renderWorkflow();
-    if (state.selectedProjectId) renderProjectDetail();
+    renderProjectDetail();
     const failures = (result.results || []).filter(
       (item) => item.fetchStatus === "failed"
     );
