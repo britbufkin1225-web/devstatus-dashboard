@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Local-first developer project status dashboard">
+    <title>DevStatus Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LOCAL PROJECT COMMAND CENTER</p>
+        <h1>DevStatus Dashboard</h1>
+        <p class="subtitle">Git state, workflow sessions, and next actions in one place.</p>
+      </div>
+      <div class="header-actions">
+        <span id="sync-time" class="muted">Not synced</span>
+        <button id="chatgpt-sync" class="button secondary">Copy for ChatGPT</button>
+        <button id="sync-now" class="button primary">Sync Now</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="summary-cards" class="summary-grid" aria-label="Dashboard summary"></section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">PORTFOLIO</p>
+            <h2>Current Projects</h2>
+          </div>
+          <span class="muted">Select a row for full detail</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Status</th>
+                <th>Current session</th>
+                <th>Branch</th>
+                <th>Git state</th>
+                <th>Last commit</th>
+                <th>GitHub</th>
+                <th>VS Code</th>
+                <th>Next step</th>
+              </tr>
+            </thead>
+            <tbody id="projects-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="project-detail" class="panel detail-panel">
+        <div class="empty-state">Select a project to inspect its status.</div>
+      </section>
+
+      <section class="workflow-layout">
+        <div class="panel">
+          <div class="section-heading workflow-heading">
+            <div>
+              <p class="eyebrow">SESSION HISTORY</p>
+              <h2>Workflow Log</h2>
+            </div>
+            <div class="filters">
+              <select id="filter-project" aria-label="Filter by project">
+                <option value="">All projects</option>
+              </select>
+              <select id="filter-status" aria-label="Filter by status">
+                <option value="">All statuses</option>
+              </select>
+              <input id="filter-tag" type="search" placeholder="Filter tag" aria-label="Filter by tag">
+            </div>
+          </div>
+          <div id="workflow-timeline" class="timeline"></div>
+        </div>
+
+        <aside class="panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">QUICK CAPTURE</p>
+              <h2 id="form-title">Add Workflow Log</h2>
+            </div>
+          </div>
+          <form id="workflow-form">
+            <input id="log-id" type="hidden">
+            <label>Project<select id="log-project" required></select></label>
+            <label>Session title<input id="log-title" required></label>
+            <div class="form-row">
+              <label>Status
+                <select id="log-status">
+                  <option>in-progress</option>
+                  <option>PASS</option>
+                  <option>T100</option>
+                  <option>W100</option>
+                  <option>WTC</option>
+                  <option>T404</option>
+                  <option>W404</option>
+                </select>
+              </label>
+              <label>Date<input id="log-date" type="date" required></label>
+            </div>
+            <label>Summary<textarea id="log-summary" rows="3"></textarea></label>
+            <label>Passes <span class="hint">one per line</span><textarea id="log-passes" rows="3"></textarea></label>
+            <label>Blockers <span class="hint">one per line</span><textarea id="log-blockers" rows="3"></textarea></label>
+            <label>Next steps <span class="hint">one per line</span><textarea id="log-next" rows="3"></textarea></label>
+            <div class="form-row">
+              <label>Tags <span class="hint">comma separated</span><input id="log-tags"></label>
+              <label>Git shorthand<input id="log-git" placeholder="WTC"></label>
+            </div>
+            <div class="form-actions">
+              <button id="cancel-edit" class="button secondary hidden" type="button">Cancel</button>
+              <button class="button primary" type="submit">Save Log</button>
+            </div>
+          </form>
+        </aside>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
