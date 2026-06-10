@@ -4,14 +4,14 @@
     "name": "DevStatus Dashboard",
     "type": "developer-tooling",
     "status": "active",
-    "repoPath": "C:/Users/britb/Documents/Codex/2026-06-10/files-mentioned-by-the-user-pasted/devstatus-dashboard",
+    "repoPath": "C:/Users/britb/Documents/devstatus-dashboard",
     "githubUrl": "https://github.com/britbufkin1225-web/devstatus-dashboard",
     "defaultBranch": "main",
     "techStack": ["Node.js", "TypeScript", "Express", "HTML", "CSS", "JavaScript"],
     "currentSession": "Initial dashboard implementation",
     "nextStep": "Install dependencies, verify the build, then review before the first commit",
     "notes": "Standalone local-first project status and workflow dashboard",
-    "vscodeOpenCommand": "code \"C:/Users/britb/Documents/Codex/2026-06-10/files-mentioned-by-the-user-pasted/devstatus-dashboard\""
+    "vscodeOpenCommand": "code \"C:/Users/britb/Documents/devstatus-dashboard\""
   },
   {
     "id": "zerosoc",
