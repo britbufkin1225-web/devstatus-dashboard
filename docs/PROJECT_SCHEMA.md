@@ -75,3 +75,18 @@ Unknown status strings are retained so the schema can grow without a migration.
 - The configured shorthand glossary
 
 Use `?format=json` to receive `{ "generatedAt": "...", "context": "..." }`.
+
+## Sync Response
+
+`POST /api/sync` accepts an optional `fetch` boolean and `projectId` string. Its `results` array contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `projectId` | string | Registered project id |
+| `projectName` | string | Display name |
+| `fetchAttempted` | boolean | Whether `git fetch --prune` was executed |
+| `fetchStatus` | string | `skipped`, `success`, or `failed` |
+| `fetchMessage` | string | Safe skip, success, or error detail |
+| `git` | object | Git metadata recalculated after the fetch phase |
+
+`POST /api/refresh` fetches all configured remotes for all projects and adds top-level `status`, `message`, `refreshedAt`, and `errors` fields. Error entries contain a project id when applicable, a machine-readable `type`, and a readable `message`.

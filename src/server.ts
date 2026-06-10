@@ -2,7 +2,11 @@ import express, { NextFunction, Request, Response } from "express";
 import { config } from "./config";
 import { chatGptRouter } from "./routes/chatgpt.routes";
 import { projectsRouter } from "./routes/projects.routes";
-import { statusRouter, syncRouter } from "./routes/status.routes";
+import {
+  refreshRouter,
+  statusRouter,
+  syncRouter
+} from "./routes/status.routes";
 import { workflowRouter } from "./routes/workflow.routes";
 import { scanAllProjects } from "./services/project-scanner.service";
 
@@ -14,6 +18,7 @@ app.use("/api/status", statusRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/workflow", workflowRouter);
 app.use("/api/sync", syncRouter);
+app.use("/api/refresh", refreshRouter);
 app.use("/api/chatgpt", chatGptRouter);
 
 app.get("/api/health", (_request, response) => {

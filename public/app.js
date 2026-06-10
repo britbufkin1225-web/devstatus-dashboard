@@ -2,7 +2,8 @@ const state = {
   projects: [],
   logs: [],
   summary: null,
-  selectedProjectId: null
+  selectedProjectId: null,
+  syncResults: new Map()
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -132,6 +133,10 @@ function renderProjectDetail() {
   const recent = projectLogs.length
     ? projectLogs.map((log) => `<li>${escapeHtml(log.date)} - ${escapeHtml(log.sessionTitle)} ${badge(log.status, statusKind(log.status))}</li>`).join("")
     : "<li>No workflow sessions yet.</li>";
+  const syncResult = state.syncResults.get(project.id);
+  const fetchStatus = syncResult
+    ? `${syncResult.fetchStatus}: ${syncResult.fetchMessage}`
+    : "No manual fetch requested this session.";
 
   $("#project-detail").innerHTML = `
     <div class="section-heading">
@@ -156,6 +161,7 @@ function renderProjectDetail() {
           <dt>Branch</dt><dd>${escapeHtml(project.git.branch || "n/a")}</dd>
           <dt>Changes</dt><dd>${project.git.modifiedFiles} modified, ${project.git.untrackedFiles} untracked</dd>
           <dt>Ahead/behind</dt><dd>${project.git.ahead ?? "n/a"} / ${project.git.behind ?? "n/a"}</dd>
+          <dt>Last fetch</dt><dd>${escapeHtml(fetchStatus)}</dd>
           <dt>Last commit</dt><dd>${escapeHtml(project.git.lastCommitMessage || "n/a")} (${shortDate(project.git.lastCommitDate)})</dd>
           <dt>GitHub</dt><dd>${escapeHtml(github)}</dd>
         </dl>
@@ -286,24 +292,58 @@ async function loadDashboard(syncProjects = true) {
   if (state.selectedProjectId) renderProjectDetail();
 }
 
-async function syncNow() {
-  const button = $("#sync-now");
-  button.disabled = true;
-  button.textContent = "Syncing...";
+function setSyncState(loading, message = "", kind = "") {
+  const refreshButton = $("#refresh-metadata");
+  const fetchButton = $("#fetch-refresh");
+  refreshButton.disabled = loading;
+  fetchButton.disabled = loading;
+  refreshButton.textContent = loading ? "Refreshing..." : "Refresh Metadata";
+  fetchButton.textContent = loading ? "Refreshing..." : "Fetch + Refresh";
+  const status = $("#sync-status");
+  status.textContent = message;
+  status.className = `sync-status ${kind || "muted"}`;
+}
+
+async function syncNow(fetchRemote = false) {
+  setSyncState(
+    true,
+    fetchRemote
+      ? "Fetching remote-tracking refs, then refreshing metadata..."
+      : "Refreshing local metadata..."
+  );
   try {
-    const result = await api("/api/sync", { method: "POST" });
+    const result = await api(fetchRemote ? "/api/refresh" : "/api/sync", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
     state.projects = result.projects;
     state.summary = result.summary;
+    state.syncResults = new Map(
+      (result.results || []).map((item) => [item.projectId, item])
+    );
     state.logs = await api("/api/workflow");
     renderSummary();
     renderProjects();
     populateSelects();
     renderWorkflow();
     if (state.selectedProjectId) renderProjectDetail();
-    showToast("Local Git and GitHub metadata refreshed");
-  } finally {
-    button.disabled = false;
-    button.textContent = "Sync Now";
+    const failures = (result.results || []).filter(
+      (item) => item.fetchStatus === "failed"
+    );
+    const successes = (result.results || []).filter(
+      (item) => item.fetchStatus === "success"
+    );
+    const warnings = result.errors || [];
+    const message = fetchRemote
+      ? warnings.length
+        ? `Metadata refreshed with warnings (${warnings.length}): ${warnings[0].message}`
+        : `Metadata refreshed (${successes.length} repositories fetched).`
+      : "Local Git and GitHub metadata refreshed.";
+    setSyncState(false, message, warnings.length || failures.length ? "error" : "success");
+    showToast(message);
+  } catch (error) {
+    setSyncState(false, error.message, "error");
+    throw error;
   }
 }
 
@@ -321,7 +361,8 @@ async function copyForChatGpt() {
   }
 }
 
-$("#sync-now").addEventListener("click", () => syncNow().catch((error) => showToast(error.message)));
+$("#refresh-metadata").addEventListener("click", () => syncNow(false).catch((error) => showToast(error.message)));
+$("#fetch-refresh").addEventListener("click", () => syncNow(true).catch((error) => showToast(error.message)));
 $("#chatgpt-sync").addEventListener("click", () => copyForChatGpt().catch((error) => showToast(error.message)));
 $("#workflow-form").addEventListener("submit", (event) => saveLog(event).catch((error) => showToast(error.message)));
 $("#cancel-edit").addEventListener("click", resetForm);

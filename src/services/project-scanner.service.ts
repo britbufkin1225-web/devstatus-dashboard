@@ -15,7 +15,10 @@ export async function saveProjects(projects: Project[]): Promise<void> {
   await writeJsonFile(config.projectsFile, projects);
 }
 
-export async function scanProject(project: Project): Promise<ProjectWithMetadata> {
+export async function scanProject(
+  project: Project,
+  previous?: ProjectWithMetadata
+): Promise<ProjectWithMetadata> {
   const [git, documentation] = await Promise.all([
     getGitMetadata(project),
     getDocumentationHealth(project)
@@ -23,13 +26,22 @@ export async function scanProject(project: Project): Promise<ProjectWithMetadata
   const githubProject = project.githubUrl
     ? project
     : { ...project, githubUrl: git.remoteOriginUrl || "" };
-  const github = await getGitHubMetadata(githubProject);
+  const refreshedGitHub = await getGitHubMetadata(githubProject);
+  const github =
+    !refreshedGitHub.available && previous?.github.available
+      ? { ...previous.github, error: refreshedGitHub.error }
+      : refreshedGitHub;
   return { ...project, git, github, documentation };
 }
 
 export async function scanAllProjects(): Promise<ProjectWithMetadata[]> {
   const projects = await getProjects();
-  projectCache = await Promise.all(projects.map(scanProject));
+  const previousProjects = new Map(
+    projectCache.map((project) => [project.id, project])
+  );
+  projectCache = await Promise.all(
+    projects.map((project) => scanProject(project, previousProjects.get(project.id)))
+  );
   return projectCache;
 }
 

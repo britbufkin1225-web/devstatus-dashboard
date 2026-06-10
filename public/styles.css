@@ -28,6 +28,7 @@ a:hover { text-decoration: underline; }
 
 .topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
@@ -35,6 +36,9 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
   background: linear-gradient(140deg, #121725, #0b0e14 70%);
 }
+.sync-status { flex-basis: 100%; margin: 0; text-align: right; }
+.sync-status.error { color: var(--red); }
+.sync-status.success { color: var(--green); }
 h1, h2, h3, p { margin-top: 0; }
 h1 { margin-bottom: 4px; font-size: clamp(26px, 4vw, 40px); letter-spacing: -0.035em; }
 h2 { margin-bottom: 0; font-size: 19px; }
@@ -165,4 +169,5 @@ label { display: grid; gap: 5px; margin-bottom: 12px; color: #c5cede; font-size:
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .summary-card.latest { grid-column: span 2; }
   .form-row, .log-lists { grid-template-columns: 1fr; }
+  .sync-status { text-align: left; }
 }

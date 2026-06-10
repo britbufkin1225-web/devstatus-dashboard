@@ -22,7 +22,7 @@ Example:
 "githubUrl": "https://github.com/your-name/zerosoc"
 ```
 
-Save the file, then click **Sync Now** in the dashboard.
+Save the file, then click **Refresh Metadata** in the dashboard.
 
 ## 3. Read Git Status
 
@@ -31,7 +31,11 @@ Save the file, then click **Sync Now** in the dashboard.
 - **Unavailable** means the path is missing, is not a Git repository, or Git could not inspect it.
 - **Ahead/behind** compares the current commit with the locally known `origin/defaultBranch`.
 
-The dashboard only reads Git information. It will not commit, push, fetch, reset, or delete anything.
+Use **Refresh Metadata** to read local Git information without network operations.
+
+Use **Fetch + Refresh** when you want current ahead/behind information. This manually runs `git fetch --all --prune`, which updates remote-tracking refs and removes stale remote-tracking refs. It does not pull, merge, rebase, checkout, commit, push, reset, or modify working files.
+
+Missing paths, non-Git folders, repositories without remotes, and fetch failures are reported per project without stopping the rest of the dashboard refresh.
 
 ## 4. Add a Workflow Session
 

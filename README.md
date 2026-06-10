@@ -62,7 +62,9 @@ Projects can also be created and patched through `POST /api/projects` and `PATCH
 
 ## Git and GitHub Sync
 
-Git metadata is read with local `git` commands. The dashboard does not modify repositories, fetch remotes, commit, push, or delete files. Ahead/behind counts are based on the local remote-tracking ref, so they reflect the last fetch performed outside this app.
+Git metadata is read with local `git` commands. **Refresh Metadata** only reads the current local state. **Fetch + Refresh** manually runs `git fetch --all --prune` in valid configured repositories before recalculating metadata.
+
+Fetch updates remote-tracking refs only. The dashboard never runs `git pull`, merge, rebase, checkout, commit, push, or commands that modify working files. Repositories with missing paths, non-Git folders, or no configured remote are skipped and reported individually.
 
 Public GitHub repository metadata can usually be read without a token, subject to low anonymous rate limits. Add a token to `.env` for private repositories and higher limits:
 
@@ -123,13 +125,28 @@ This does not silently write to ChatGPT account Memory. ChatGPT does not expose 
 | GET | `/api/workflow/project/:projectId` | Project logs |
 | POST | `/api/workflow` | Add a workflow log |
 | PATCH | `/api/workflow/:id` | Update a workflow log |
-| POST | `/api/sync` | Refresh live metadata |
+| POST | `/api/sync` | Refresh metadata, optionally fetching remote refs |
+| POST | `/api/refresh` | Fetch all remotes, refresh metadata, and return warnings |
 | GET | `/api/chatgpt/context` | Generate ChatGPT-ready context |
+
+`POST /api/sync` accepts an optional body:
+
+```json
+{
+  "fetch": true,
+  "projectId": "optional-project-id"
+}
+```
+
+When `projectId` is provided, fetch is limited to that project while metadata for the full dashboard is still refreshed. Each project receives a result with `fetchAttempted`, `fetchStatus`, `fetchMessage`, and refreshed `git` metadata.
+
+`POST /api/refresh` is the all-project manual refresh workflow. It runs `git fetch --all --prune` for each valid repository and returns `status`, `message`, `refreshedAt`, `projects`, and a project-level `errors` array. One broken repository or GitHub request does not stop the rest.
 
 ## Known Limitations
 
 - JSON persistence is intended for one local user, not concurrent multi-user writes.
 - GitHub calls can be rate-limited, especially without a token.
-- Ahead/behind information does not run `git fetch` and may be stale.
+- Fetch is manual. Until **Fetch + Refresh** is used, ahead/behind values may reflect stale local remote-tracking refs.
+- Fetch only updates remote-tracking refs; it never pulls or integrates remote commits into a local branch.
 - Documentation checks inspect the repository root and the first level of `docs/`; they do not score document quality or recurse through nested folders.
 - Browser clipboard access may require localhost and a user click.

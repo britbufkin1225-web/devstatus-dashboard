@@ -1,14 +1,18 @@
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { promisify } from "node:util";
-import { GitMetadata, Project } from "../types";
+import { GitFetchResult, GitMetadata, Project } from "../types";
 
 const execFileAsync = promisify(execFile);
 
-async function runGit(repoPath: string, args: string[]): Promise<string> {
+async function runGit(
+  repoPath: string,
+  args: string[],
+  timeout = 8000
+): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", repoPath, ...args], {
     encoding: "utf8",
-    timeout: 8000,
+    timeout,
     windowsHide: true,
     maxBuffer: 1024 * 1024
   });
@@ -25,27 +29,100 @@ function unavailable(error: string): GitMetadata {
   };
 }
 
-export async function getGitMetadata(project: Project): Promise<GitMetadata> {
+async function validateRepository(project: Project): Promise<string | null> {
   if (!project.repoPath) {
-    return unavailable("No local repository path configured.");
+    return "No local repository path configured.";
   }
 
   try {
     const stats = await fs.stat(project.repoPath);
     if (!stats.isDirectory()) {
-      return unavailable("Configured repository path is not a directory.");
+      return "Configured repository path is not a directory.";
     }
   } catch {
-    return unavailable("Configured repository path does not exist.");
+    return "Configured repository path does not exist.";
   }
 
   try {
-    const isInside = await runGit(project.repoPath, ["rev-parse", "--is-inside-work-tree"]);
+    const isInside = await runGit(project.repoPath, [
+      "rev-parse",
+      "--is-inside-work-tree"
+    ]);
     if (isInside !== "true") {
-      return unavailable("Configured path is not a Git working tree.");
+      return "Configured path is not a Git working tree.";
     }
   } catch {
-    return unavailable("Configured path is not a Git repository or Git is unavailable.");
+    return "Configured path is not a Git repository or Git is unavailable.";
+  }
+
+  return null;
+}
+
+function gitErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "Git fetch failed for an unknown reason.";
+  }
+
+  const details = error as Error & { stderr?: string };
+  return details.stderr?.trim() || error.message;
+}
+
+export async function fetchGitRemote(
+  project: Project,
+  allRemotes = false
+): Promise<GitFetchResult> {
+  const validationError = await validateRepository(project);
+  if (validationError) {
+    return {
+      attempted: false,
+      status: "skipped",
+      message: validationError
+    };
+  }
+
+  try {
+    const remotes = await runGit(project.repoPath, ["remote"]);
+    if (!remotes) {
+      return {
+        attempted: false,
+        status: "skipped",
+        message: "No Git remote is configured."
+      };
+    }
+  } catch (error) {
+    return {
+      attempted: false,
+      status: "skipped",
+      message: `Unable to inspect Git remotes: ${gitErrorMessage(error)}`
+    };
+  }
+
+  try {
+    await runGit(
+      project.repoPath,
+      allRemotes ? ["fetch", "--all", "--prune"] : ["fetch", "--prune"],
+      60000
+    );
+    return {
+      attempted: true,
+      status: "success",
+      message: allRemotes
+        ? "Fetched all remotes and pruned remote-tracking refs."
+        : "Fetched and pruned remote-tracking refs."
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      status: "failed",
+      message: gitErrorMessage(error)
+    };
+  }
+}
+
+export async function getGitMetadata(project: Project): Promise<GitMetadata> {
+  const validationError = await validateRepository(project);
+  if (validationError) {
+    return unavailable(validationError);
   }
 
   try {

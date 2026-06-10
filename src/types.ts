@@ -40,6 +40,29 @@ export interface GitMetadata {
   behind?: number;
 }
 
+export type GitFetchStatus = "skipped" | "success" | "failed";
+
+export interface GitFetchResult {
+  attempted: boolean;
+  status: GitFetchStatus;
+  message: string;
+}
+
+export interface ProjectSyncResult {
+  projectId: string;
+  projectName: string;
+  fetchAttempted: boolean;
+  fetchStatus: GitFetchStatus;
+  fetchMessage: string;
+  git: GitMetadata;
+}
+
+export interface RefreshError {
+  projectId?: string;
+  type: string;
+  message: string;
+}
+
 export interface GitHubMetadata {
   available: boolean;
   error?: string;
